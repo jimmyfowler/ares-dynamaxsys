@@ -6,7 +6,7 @@ from dynamaxsys.base import ControlAffineDynamics, Dynamics
 class SimpleCar(Dynamics):
     state_dim: int = 3
     control_dim: int = 2
-    wheelbase: int
+    wheelbase: float
 
     def __init__(self, wheelbase):
         self.wheelbase = wheelbase
@@ -26,7 +26,7 @@ class SimpleCar(Dynamics):
 class DynamicallyExtendedSimpleCar(ControlAffineDynamics):
     state_dim: int = 4
     control_dim: int = 2
-    wheelbase: int
+    wheelbase: float
 
     def __init__(self, wheelbase):
         self.wheelbase = wheelbase
