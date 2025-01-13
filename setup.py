@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="dynamaxsys",
-    version="0.0.1",
+    version="0.0.2",
     description="dynamical systems with jax",
     author="Karen Leung",
     author_email="kymleung@uw.edu",
