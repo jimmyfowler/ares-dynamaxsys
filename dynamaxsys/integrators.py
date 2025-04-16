@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from dynamaxsys.base import ControlAffineDynamics
+from dynamaxsys.base import ControlAffineDynamics, LinearDynamics
 
 
 

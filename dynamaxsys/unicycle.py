@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from dynamaxsys.base import ControlAffineDynamics, Dynamics
+from dynamaxsys.base import ControlAffineDynamics
 
 class Unicycle(ControlAffineDynamics):
     state_dim: int = 3
