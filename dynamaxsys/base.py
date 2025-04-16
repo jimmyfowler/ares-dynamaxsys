@@ -1,55 +1,65 @@
-import jax
-import jax.numpy as jnp
 from dynamaxsys.utils import runge_kutta_integrator, linearize
-import functools
 import abc
-
-
+from typing import Callable
+import jax.numpy as jnp
 
 class Dynamics(metaclass=abc.ABCMeta):
+    dynamics_func: Callable
     state_dim: int
     control_dim: int
 
-    @abc.abstractmethod
-    def ode_dynamics(self, state, control, time=0):
-        """Implements the continuous-time dynamics ODE."""
+    def __init__(self, dynamics_func, state_dim, control_dim):
+        self.dynamics_func = dynamics_func
+        self.state_dim = state_dim
+        self.control_dim = control_dim
 
-    def discrete_step(self, state, control, time=0, dt=0.1):
-        return runge_kutta_integrator(self.ode_dynamics, dt)(state, control, time)
-
-    def linearized_dynamics(self, state0, control0, time):
-        A, B, C = linearize(self.ode_dynamics, state0, control0, time)
-        open_loop_dynamics = lambda x, t: A @ x + C
-        control_jacobian = lambda x, t: B
-        return LinearizedNonlinearDynamics(open_loop_dynamics, control_jacobian)
+    def linearize(self, state0, control0, time):
+        A, B, C = linearize(self.dynamics_func, state0, control0, time)
+        return A @ state0 + B @ control0 + C
 
     def __call__(self, state, control, time=0):
-        return self.ode_dynamics(state, control, time)
-
-
+        return self.dynamics_func(state, control, time)
 
 class ControlAffineDynamics(Dynamics):
 
-    def ode_dynamics(self, state, control, time=0):
-        return self.open_loop_dynamics(state, time) + self.control_jacobian(state, time) @ control
+    def __init__(self, drift_dynamics, control_jacobian, state_dim, control_dim):
+        self.drift_dynamics = drift_dynamics
+        self.control_jacobian = control_jacobian
+        def dynamics_func(x, u, t):
+            return drift_dynamics(x,t) + control_jacobian(x,t) @ u
+        super().__init__(dynamics_func, state_dim, control_dim)
 
-    @abc.abstractmethod
-    def open_loop_dynamics(self, state, time):
-        """Implements the open loop dynamics `f(x, t)`."""
-
-    @abc.abstractmethod
-    def control_jacobian(self, state, time):
-        """Implements the control Jacobian `G_u(x, t)`."""
+    def open_loop_dynamics(self, state, time=0.):
+        return self.drift_dynamics(state, time)
 
 
-class LinearizedNonlinearDynamics(ControlAffineDynamics):
 
-    def __init__(self, open_loop_dynamics, control_jacobian):
-        self.old = open_loop_dynamics
-        self.cj = control_jacobian
+class LinearDynamics(ControlAffineDynamics):
 
-    def open_loop_dynamics(self, state, time=0):
-        return self.old(state, time)
+    def __init__(self, A, B, C=None):
+        self.A = A
+        self.B = B
+        state_dim = A.shape[0]
+        control_dim = B.shape[1]
+        if C is None:
+            self.C = jnp.zeros((state_dim,))
+        else:
+            assert C.shape == (state_dim,)
+            self.C = C
 
-    def control_jacobian(self, state, time=0):
-        return self.cj(state, time)
+
+        def drift_dynamics(x, t):
+            return A @ x + C
+        def control_jacobian(x, t):
+            return B
+
+        super().__init__(drift_dynamics, control_jacobian, state_dim, control_dim)
+
+
+def get_discrete_time_dynamics(continuous_time_dynamics: Dynamics, dt: float) -> Dynamics:
+    discete_dynamics = runge_kutta_integrator(continuous_time_dynamics, dt)
+    return Dynamics(discete_dynamics, continuous_time_dynamics.state_dim, continuous_time_dynamics.control_dim)
+
+def get_linearized_dynamics(dynamics: Dynamics, state0, control0, time):
+    A, B, C = linearize(dynamics, state0, control0, time)
+    return LinearDynamics(A, B, C)
