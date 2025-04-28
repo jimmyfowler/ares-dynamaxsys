@@ -49,7 +49,7 @@ class LinearDynamics(ControlAffineDynamics):
 
 
         def drift_dynamics(x, t):
-            return A @ x + C
+            return A @ x + self.C
         def control_jacobian(x, t):
             return B
 
