@@ -8,8 +8,8 @@ class IntegratorND(LinearDynamics):
     N_dim: int
 
     def __init__(self, integrator_dim, N_dim):
-        # self.integrator_dim = integrator_dim
-        # self.N_dim = N_dim
+        self.integrator_dim = integrator_dim
+        self.N_dim = N_dim
         state_dim = self.integrator_dim * self.N_dim
         control_dim = self.N_dim
 
@@ -40,8 +40,8 @@ class TwoPlayerRelativeIntegratorND(ControlAffineDynamics):
     N_dim: int
 
     def __init__(self, integrator_dim, N_dim):
-        # self.integrator_dim = integrator_dim
-        # self.N_dim = N_dim
+        self.integrator_dim = integrator_dim
+        self.N_dim = N_dim
         state_dim = self.integrator_dim * self.N_dim
         # control_dim = self.N_dim * 2
 
