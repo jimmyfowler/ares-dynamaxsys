@@ -1,9 +1,9 @@
 from dynamaxsys.utils import runge_kutta_integrator, linearize
-import abc
-from typing import Callable
+from typing import Callable, Union
 import jax.numpy as jnp
+import equinox
 
-class Dynamics(metaclass=abc.ABCMeta):
+class Dynamics(equinox.Module):
     dynamics_func: Callable
     state_dim: int
     control_dim: int
@@ -21,6 +21,11 @@ class Dynamics(metaclass=abc.ABCMeta):
         return self.dynamics_func(state, control, time)
 
 class ControlAffineDynamics(Dynamics):
+    drift_dynamics: Callable
+    control_jacobian: Callable
+    state_dim: int
+    control_dim: int
+
 
     def __init__(self, drift_dynamics, control_jacobian, state_dim, control_dim):
         self.drift_dynamics = drift_dynamics
@@ -34,7 +39,10 @@ class ControlAffineDynamics(Dynamics):
 
 
 
-class LinearDynamics(ControlAffineDynamics):
+class LTIDynamics(ControlAffineDynamics):
+    A: Union[jnp.ndarray]
+    B: Union[jnp.ndarray]
+    C: Union[jnp.ndarray, None] = None
 
     def __init__(self, A, B, C=None):
         self.A = A
@@ -56,10 +64,11 @@ class LinearDynamics(ControlAffineDynamics):
         super().__init__(drift_dynamics, control_jacobian, state_dim, control_dim)
 
 
+
 def get_discrete_time_dynamics(continuous_time_dynamics: Dynamics, dt: float) -> Dynamics:
     discete_dynamics = runge_kutta_integrator(continuous_time_dynamics, dt)
     return Dynamics(discete_dynamics, continuous_time_dynamics.state_dim, continuous_time_dynamics.control_dim)
 
 def get_linearized_dynamics(dynamics: Dynamics, state0, control0, time):
     A, B, C = linearize(dynamics, state0, control0, time)
-    return LinearDynamics(A, B, C)
+    return LTIDynamics(A, B, C)

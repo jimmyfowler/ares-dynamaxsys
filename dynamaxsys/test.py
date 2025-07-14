@@ -73,9 +73,9 @@ def test_linear_dynamics():
     dt = 0.1
     A = jnp.array(np.random.randn(state_dim, state_dim))
     B = jnp.array(np.random.randn(state_dim, control_dim))
-    C = jnp.array(np.random.randn(state_dim))
+    C = None
 
-    ct_dynamics = LinearDynamics(
+    ct_dynamics = LTIDynamics(
         A=A,
         B=B,
         C=C
@@ -93,7 +93,7 @@ def test_linear_dynamics():
     xnext_linearize = dt_dynamics.linearize(state, control, time)
 
 
-    print("Passed: LinearDynamics class")
+    print("Passed: LTIDynamics class")
 
 def check_continuous_time_unicycle(state, control):
     x, y, theta = state
