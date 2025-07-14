@@ -1,9 +1,9 @@
 import jax.numpy as jnp
-from dynamaxsys.base import ControlAffineDynamics, LinearDynamics
+from dynamaxsys.base import ControlAffineDynamics, LTIDynamics
 
 
 
-class IntegratorND(LinearDynamics):
+class IntegratorND(LTIDynamics):
     integrator_dim: int
     N_dim: int
 
