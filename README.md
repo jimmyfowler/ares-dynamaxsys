@@ -4,12 +4,12 @@ A common dynamical systems library written in JAX, designed to be used for vario
 
 ### Install
 
+Install the repo:
 
+```pip install dynamaxsys```
 
-```
-git clone https://github.com/UW-CTRL/dynamaxsys.git
-cd dynamaxsys
-pip install -e .
-```
+Alternatively, if you want to develop on the code base, please fork this repo and make pull requests as needed.
+
+```pip install -e .```
 
 
