@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: dynamaxsys
+Version: 0.0.6
+Summary: dynamical systems with jax
+Author: Karen Leung
+Author-email: kymleung@uw.edu
+Requires-Dist: jax
+Requires-Dist: numpy
