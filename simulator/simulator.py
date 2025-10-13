@@ -1,15 +1,17 @@
+import equinox
 import jax
 import jax.numpy as jnp
-from dynamaxsys.parafoil import JannParafoil4DOF
-import equinox
 import matplotlib.pyplot as plt
+
+from dynamaxsys.parafoil import JannParafoil4DOF
+from dynamaxsys.base import get_discrete_time_dynamics
 
 
 @equinox.filter_jit
-def simulate(x0, us, ts, dynamics):
+def simulate(x0, us, ts, discrete_dynamics):
     def scan_fn(x, ut):
         u, t = ut
-        xn = dynamics(x, u, t)
+        xn = discrete_dynamics(x, u, t)
         return xn, xn
 
     _, xs = jax.lax.scan(scan_fn, x0, (us, ts))
@@ -26,7 +28,7 @@ body_to_inertial = jnp.array(  # TODO: fill this in to simulate in inertial fram
     ]
 )
 
-dynamics = JannParafoil4DOF(
+jann_continuous_dynamics = JannParafoil4DOF(
     m=122.0,
     S=23.36,
     C_L0=0.502,
@@ -37,6 +39,7 @@ dynamics = JannParafoil4DOF(
     T_phi=0.994,
 )
 
+jann_discrete_dynamics = get_discrete_time_dynamics(jann_continuous_dynamics, dt=0.1)
 
 dt = 0.1  # seconds
 time_horizon = 20  # seconds
@@ -44,18 +47,18 @@ N = int(time_horizon / dt)
 
 us = jnp.array(
     [
-        jnp.ones(N) * 0.1,
-        jnp.zeros(N),  # delta_a, delta_s
+        [jnp.ones(N) * 0.1],
+        [jnp.zeros(N)]  # delta_a, delta_s
     ]
 )
-us = us.T  # shape (T, m) aka (time horizon, control dim)
+# shape (T, m) aka (time horizon, control dim)
 
 
 ts = jnp.arange(0, time_horizon, dt)
 
 x0 = jnp.array([3.0, 3.0, 0.0, 0.0])  # u, w, phi, psi
 
-xs = simulate(x0, us, ts, dynamics)
+xs = simulate(x0, us, ts, jann_discrete_dynamics)
 
 
 fig, axs = plt.subplots(4, 1, figsize=(10, 6))
