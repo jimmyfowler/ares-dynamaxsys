@@ -1,22 +1,5 @@
 import jax.numpy as jnp
 from dynamaxsys.base import Dynamics
-# from ambiance import Atmosphere
-
-
-# def getAirDensityISA(altitude_meters):
-#     """
-#     Calculates the air density at a given altitude according to the
-#     International Standard Atmosphere (ISA) model.
-
-#     Args:
-#         altitude_meters (float): The geometric altitude in meters.
-
-#     Returns:
-#         float: The air density in kg/m^3.
-#     """
-#     atmosphere = Atmosphere(altitude_meters)
-#     return atmosphere.density[0]
-
 
 def getInertialToBodyRotationMatrix(phi, theta, psi):
     """
@@ -56,7 +39,6 @@ def getInertialToBodyRotationMatrix(phi, theta, psi):
     )
 
     return inertial_to_body
-
 
 class JannParafoil4DOF(Dynamics):
     state_dim: int = 4  # u, w, phi, psi
@@ -118,7 +100,6 @@ class JannParafoil4DOF(Dynamics):
 
         # initialize super class Dynamics object
         super().__init__(dynamics_func, self.state_dim, self.control_dim)
-
 
 class SlegersParafoil6DOF(Dynamics):
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
@@ -204,11 +185,7 @@ class SlegersParafoil6DOF(Dynamics):
 
             # Aerodynamic Force
             aero_force = (
-                0.5
-                * self.rho
-                * V_a**2
-                * self.S
-                * (L * jnp.array([w, 0, -u]) - D * jnp.array([u, v, w]))
+                L * jnp.array([w, 0, -u]) - D * jnp.array([u, v, w])
             )
 
             # Aerodynamic Moment
@@ -246,11 +223,10 @@ class SlegersParafoil6DOF(Dynamics):
 
             ## EQUATIONS OF MOTION ##
 
-            # inertial-frame tranlsation dynamics
+            # inertial-frame velocity
             xyz_dot = body_to_inertial @ jnp.array([u, v, w])
 
             # body-frame translation dynamics
-
             uvw_dot_force = 1 / self.m * (aero_force + weight_force)
 
             uvw_dot_coriolis = (
