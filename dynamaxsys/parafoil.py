@@ -180,12 +180,12 @@ class SlegersParafoil6DOF(Dynamics):
             inertial_to_body = getInertialToBodyRotationMatrix(phi, theta, psi)
             body_to_inertial = inertial_to_body.T  # rotation matrix is orthogonal
 
-            L = 0.5 * self.rho * V_a**2 * self.S * C_L  # Lift
-            D = 0.5 * self.rho * V_a**2 * self.S * C_D  # Drag
+            L_div_Va = 0.5 * self.rho * V_a * self.S * C_L  # Lift
+            D_div_Va = 0.5 * self.rho * V_a * self.S * C_D  # Drag
 
             # Aerodynamic Force
             aero_force = (
-                L * jnp.array([w, 0, -u]) - D * jnp.array([u, v, w])
+                L_div_Va * jnp.array([w, 0, -u]) - D_div_Va * jnp.array([u, v, w])
             )
 
             # Aerodynamic Moment
@@ -207,6 +207,7 @@ class SlegersParafoil6DOF(Dynamics):
                     ]
                 )
             )
+                        
 
             # Weight Force
             weight_force = (
@@ -230,10 +231,7 @@ class SlegersParafoil6DOF(Dynamics):
             uvw_dot_force = 1 / self.m * (aero_force + weight_force)
 
             uvw_dot_coriolis = (
-                -inertial_to_body
-                @ skew_symmetric_pqr
-                @ body_to_inertial
-                @ jnp.array([u, v, w])
+                -skew_symmetric_pqr @ jnp.array([u, v, w])
             )
 
             uvw_dot = uvw_dot_force + uvw_dot_coriolis
@@ -252,7 +250,7 @@ class SlegersParafoil6DOF(Dynamics):
             # body frame rotational dynamics
             pqr_dot = self.mmoi_inverse @ (
                 aero_moment
-                - skew_symmetric_pqr @ jnp.identity(3) @ jnp.array([p, q, r])
+                - skew_symmetric_pqr @ self.mmoi @ jnp.array([p, q, r])
             )
 
             return jnp.concatenate([xyz_dot, uvw_dot, euler_dot, pqr_dot])
