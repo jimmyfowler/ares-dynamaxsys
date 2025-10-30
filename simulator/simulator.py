@@ -110,9 +110,9 @@ def get_state_label(idx):
     return labels[idx] if 0 <= idx < len(labels) else f"State {idx}"
 
 
-def plot_selected_states(xs, state_indices, ts):
-    fig = sp.make_subplots(rows=len(state_indices), cols=1, shared_xaxes=True)
-
+def plot_selected_states(xs, state_indices, us, ts):
+    fig = sp.make_subplots(rows=len(state_indices) + 1, cols=1, shared_xaxes=True)
+        
     for i, idx in enumerate(state_indices):
         fig.add_trace(
             go.Scatter(x=ts, y=xs[:-1, idx], name=get_state_label(idx)),
@@ -120,9 +120,16 @@ def plot_selected_states(xs, state_indices, ts):
             col=1,
         )
         fig.update_yaxes(title_text=get_state_label(idx), row=i + 1, col=1)
+    
+    fig.add_trace(
+        go.Scatter(x=ts, y=us, name="Control Input"),
+        row=len(state_indices) + 1,
+        col=1,
+    )
+    fig.update_yaxes(title_text="Asymetric Deflection", row=len(state_indices) + 1, col=1)
 
-    fig.update_xaxes(title_text="Time (s)", row=len(state_indices), col=1)
-    fig.update_layout(height=200 * len(state_indices), showlegend=False)
+    fig.update_xaxes(title_text="Time (s)", row=len(state_indices) + 1, col=1)
+    fig.update_layout(height=200 * (len(state_indices) + 1), showlegend=False)
     fig.show()
 
 
@@ -172,7 +179,7 @@ def plot_slegers_3D(xs, ts):
 ## Simulation Hyperparameters ##
 ################################
 dt = 0.01  # time step (seconds)
-time_horizon = 30  # total time (seconds)
+time_horizon = 20  # total time (seconds)
 N = int(time_horizon / dt)  # number of timesteps
 ts = jnp.arange(0, time_horizon, dt)
 
@@ -216,7 +223,7 @@ x0_jann = jnp.array(
 ## BUILD SLEGERS 6DOF DYNAMICS ##
 #################################
 slegers_params = {
-    "m": 2,  # lbf
+    "m": 0.062,  # slugs
     "S": 7.5,  # ft^2
     "b": 4.25,  # ft
     "c": 1.0,  # ft
@@ -237,8 +244,8 @@ slegers_params = {
     "C_lp": -0.0520,
     "C_l_delta_a": 0.0021,
     # Pitching-moment coefficients (reasonable for parafoil)
-    "C_m0": 0.01,  # zero-lift pitching moment
-    "C_m_alpha": -0.05,  # pitching moment due to angle of attack
+    "C_m0": 0.02,  # zero-lift pitching moment
+    "C_m_alpha": -0.05,  # pitching moment due to angle of attack (-0.05)
     "C_mq": -0.4,  # pitching moment due to pitch rate
     "C_m_delta_s": -0.02,  # pitching moment due to trailing edge deflection
     "C_n_r": -0.0850,
@@ -252,11 +259,13 @@ slegers_continuous_dynamics = SlegersParafoil6DOF(slegers_params)
 slegers_discrete_dynamics = get_discrete_time_dynamics(slegers_continuous_dynamics, dt)
 
 # control sequence:
-us_slegers = jnp.ones(N) * 5  # delta_a
+# us_slegers = jnp.ones(N) * 1  # delta_a
+us_slegers = jnp.zeros(N) # no control
+# us_slegers = us_slegers.at[N // 2 :].set(5.0) # second half turn
 
 # initial state:
 x0_slegers = jnp.array(
-    [0.0, 0.0, -200.0, 5, 0.1, 10, 20 * DEG_TO_RAD, 2 * DEG_TO_RAD, 0, 0.0, 0.0, 0.0]
+    [0.0, 0.0, -200.0, 10, 0.1, 10, 20 * DEG_TO_RAD, 2 * DEG_TO_RAD, 0, 0.0, 0.0, 0.0]
 )  # x, y, z, u, v, w, phi, theta, psi, p, q, r (imperial units)
 
 
@@ -268,6 +277,7 @@ start_time = time.time()
 xs = simulate(x0_slegers, us_slegers, ts, slegers_discrete_dynamics)
 end_time = time.time()
 print(f"Simulation run time: {end_time - start_time:.4f} seconds")
+print(f"(total simulation frames: {N})")
 
 # STATES
 # 0: x
@@ -283,6 +293,11 @@ print(f"Simulation run time: {end_time - start_time:.4f} seconds")
 # 10: q (pitch rate)
 # 11: r (yaw rate)
 
-plot_selected_states(xs, [3, 4, 5, 6, 7, 8], ts)
+# convert angles to degrees for plotting
+for i in range(6, 12):
+    xs = xs.at[:, i].set(xs[:, i] * RAD_TO_DEG)
+
 plot_slegers_3D(xs, ts)
+plot_selected_states(xs, [3, 4, 5, 6, 7, 8], us_slegers, ts)
+
 # plot_jann_body(xs, ts)
