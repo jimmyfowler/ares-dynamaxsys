@@ -2,79 +2,265 @@ import equinox
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import time
 
-from dynamaxsys.parafoil import JannParafoil4DOF
 from dynamaxsys.base import get_discrete_time_dynamics
+from dynamaxsys.parafoil import JannParafoil4DOF, SlegersParafoil6DOF
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
 
+RAD_TO_DEG = 180.0 / jnp.pi
+DEG_TO_RAD = jnp.pi / 180.0
+KG_M3_TO_SLUG_FT3 = 0.00194032  # 1 kg/m^3 = 0.00194032 slug/ft^3
 
 @equinox.filter_jit
 def simulate(x0, us, ts, discrete_dynamics):
+    """
+    Simulates the system dynamics over time using a discrete-time model.
+
+    Args:
+        x0: Initial state, shape (state_dim,).
+        us: Control input sequence, shape (N, control_dim).
+        ts: Time steps, shape (N,).
+        discrete_dynamics: Function that computes next state given (x, u, t).
+
+    Returns:
+        Array of states over time, shape (N+1, state_dim).
+    """
     def scan_fn(x, ut):
         u, t = ut
         xn = discrete_dynamics(x, u, t)
         return xn, xn
 
+    # The scan input is a tuple (us, ts), where:
+    #   us: control input sequence, shape (N, control_dim)
+    #   ts: time steps, shape (N,)
+    # This allows scan_fn to receive both the control input and time at each step.
     _, xs = jax.lax.scan(scan_fn, x0, (us, ts))
 
     return jnp.concatenate([x0[None], xs], axis=0)
 
+@equinox.filter_jit
+def simulate_with_controller(x0, controller, ts, discrete_dynamics):
+    """
+    Simulates the system dynamics over time using a discrete-time model
+    and controller.
 
-body_to_inertial = jnp.array(  # TODO: fill this in to simulate in inertial frame
-    [
-        [0.0, 1.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, -1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
+    Args:
+        x0: Initial state, shape (state_dim,).
+        controller: a function that takes the current state as an argument and outputs a control.
+        ts: Time steps, shape (N,).
+        discrete_dynamics: Function that computes next state given (x, u, t).
+
+    Returns:
+        Array of states over time, shape (N+1, state_dim).
+    """
+    def scan_fn(x, t):
+        u = controller(x)
+        xn = discrete_dynamics(x, u, t)
+        return xn, xn
+
+    _, xs = jax.lax.scan(scan_fn, x0, ts)
+
+    return jnp.concatenate([x0[None], xs], axis=0)
+
+
+def plot_jann_body(xs, ts):
+    fig, axs = plt.subplots(4, 1, figsize=(10, 6))
+    axs[0].plot(ts, xs[:-1, 0], label="u (forward vel)")
+    axs[0].set_ylabel("fwd speed (m/s)")
+
+    axs[1].plot(ts, xs[:-1, 1], label="w (down vel)")
+    axs[1].set_ylabel("down speed (m/s)")
+
+    axs[2].plot(ts, xs[:-1, 2] * RAD_TO_DEG, label="phi (roll)")
+    axs[2].set_ylabel("roll (deg)")
+
+    axs[3].plot(ts, xs[:-1, 3] * RAD_TO_DEG, label="psi (yaw)")
+    axs[3].set_ylabel("yaw (deg)")
+
+    axs[3].set_xlabel("Time (s)")
+
+    plt.tight_layout()
+    plt.show()
+
+def get_state_label(idx):
+    labels = [
+        "x (ft)",
+        "y (ft)",
+        "z (ft)",
+        "u (ft/s)",
+        "v (ft/s)",
+        "w (ft/s)",
+        "phi (deg)",
+        "theta (deg)",
+        "psi (deg)",
+        "p (deg/s)",
+        "q (deg/s)",
+        "r (deg/s)",
     ]
-)
+    return labels[idx] if 0 <= idx < len(labels) else f"State {idx}"
 
-jann_continuous_dynamics = JannParafoil4DOF(
-    m=122.0,
-    S=23.36,
-    C_L0=0.502,
-    C_D0=0.173,
-    C_L_delta_s=0.892,
-    C_D_delta_s=1.086,
-    K_phi=0.504,
-    T_phi=0.994,
-)
+def plot_selected_states(xs, state_indices, ts):
+    num_states = len(state_indices)
+    fig, axs = plt.subplots(num_states, 1, figsize=(10, num_states))
+    for i, idx in enumerate(state_indices):
+        axs[i].plot(ts, xs[:-1, idx])
+        label = get_state_label(idx)
+        axs[i].set_ylabel(label)
+    axs[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
 
-jann_discrete_dynamics = get_discrete_time_dynamics(jann_continuous_dynamics, dt=0.1)
+def plot_slegers_3D(xs):
+    fig = plt.figure(figsize=(10, 6))
+    ax = fig.add_subplot(111, projection='3d')
 
-dt = 0.1  # seconds
-time_horizon = 20  # seconds
-N = int(time_horizon / dt)
+    # Get positions and forward speed
+    x = xs[:, 0]
+    y = xs[:, 1]
+    z = -xs[:, 2]
+    fwd_speed = xs[:, 3]
 
-us = jnp.array(
-    [
-        [jnp.ones(N) * 0.1],
-        [jnp.zeros(N)]  # delta_a, delta_s
-    ]
-)
-# shape (T, m) aka (time horizon, control dim)
+    # Create a colormap based on forward speed
+    norm = plt.Normalize(fwd_speed.min(), fwd_speed.max())
+    colors = cm.viridis(norm(fwd_speed))
+
+    # Plot colored trajectory
+    for i in range(len(x) - 1):
+        ax.plot(x[i:i+2], y[i:i+2], z[i:i+2], color=colors[i])
+
+    ax.set_xlabel('X Position (ft)')
+    ax.set_ylabel('Y Position (ft)')
+    ax.set_zlabel('Altitude (ft)')
+    ax.set_title('3D Trajectory of Slegers Parafoil')
+    ax.legend(['Parafoil Trajectory'])
+    ax.set_aspect('equal')
+
+    # Add colorbar
+    mappable = cm.ScalarMappable(norm=norm, cmap=cm.viridis)
+    mappable.set_array(fwd_speed)
+    cbar = plt.colorbar(mappable, ax=ax, pad=0.1, shrink=0.7)
+    cbar.set_label('Forward Speed (ft/s)')
+
+    plt.show()
 
 
+################################
+## Simulation Hyperparameters ##
+################################
+dt = 0.01  # time step (seconds)
+time_horizon = 50  # total time (seconds)
+N = int(time_horizon / dt) # number of timesteps
 ts = jnp.arange(0, time_horizon, dt)
 
-x0 = jnp.array([3.0, 3.0, 0.0, 0.0])  # u, w, phi, psi
 
-xs = simulate(x0, us, ts, jann_discrete_dynamics)
+##############################
+## BUILD JANN 4DOF DYNAMICS ##
+##############################
+jann_params = {
+    "m": 122.0,  # kg
+    "S": 23.36,  # m^2
+    "C_L0": 0.502,
+    "C_D0": 0.173,
+    "C_L_delta_s": 0.892,
+    "C_D_delta_s": 1.086,
+    "K_phi": 0.504,
+    "T_phi": 0.994,
+    "g": 9.81,  # m/s^2
+}
+
+jann_continuous_dynamics = JannParafoil4DOF(jann_params)
+
+jann_discrete_dynamics = get_discrete_time_dynamics(jann_continuous_dynamics, dt)
+
+# control sequence:
+us_jann = jnp.array(
+    [
+        jnp.ones(N) * 0.1,  # delta_a
+        jnp.zeros(N),  # delta_s
+    ]
+).T
+# columns: delta_a, delta_s
+# shape (N, m) aka (time steps, control dim)
+
+# initial state:
+x0_jann = jnp.array(
+    [3.0, 3.0, 10 * DEG_TO_RAD, 0.0]
+)  # u (m/s), w (m/s) phi (rad), psi (rad)
 
 
-fig, axs = plt.subplots(4, 1, figsize=(10, 6))
-axs[0].plot(ts, xs[:-1, 0], label="u (forward vel)")
-axs[0].set_ylabel("fwd speed (m/s)")
+#################################
+## BUILD SLEGERS 6DOF DYNAMICS ##
+#################################
+slegers_params = {
+    "m": 2,  # lbf
+    "S": 7.5,  # ft^2
+    "b": 4.25,  # ft
+    "c": 1.0,  # ft
+    "mmoi": jnp.array(
+        [
+            [0.1357, 0.0, 0.0025],
+            [0.0, 0.1506, 0.0],
+            [0.0025, 0.0, 0.0203],
+        ]
+    ), # slug/ft^2
+    "C_L0": 0.502,
+    "C_D0": 0.173,
+    "C_L_alpha": 3.256,
+    "C_D_alpha2": 1.984,
+    "C_L_delta_a": 0.892,
+    "C_D_delta_a": 0.298,
+    "C_lphi": -0.0100,
+    "C_lp": -0.0520,
+    "C_l_delta_a": 0.0021,
+    # Pitching-moment coefficients (reasonable for parafoil)
+    "C_m0": 0.01,  # zero-lift pitching moment
+    "C_m_alpha": -0.05,  # pitching moment due to angle of attack
+    "C_mq": -0.4,  # pitching moment due to pitch rate
+    "C_m_delta_s": -0.02,  # pitching moment due to trailing edge deflection
+    "C_n_r": -0.0850,
+    "C_n_delta_a": 0.0010,
+    "rho": 0.0023769,  # slug/ft^3 (sea level)
+    "g": 32.174,  # ft/s^2
+}
 
-axs[1].plot(ts, xs[:-1, 1], label="w (down vel)")
-axs[1].set_ylabel("down speed (m/s)")
+slegers_continuous_dynamics = SlegersParafoil6DOF(slegers_params)
 
-axs[2].plot(ts, xs[:-1, 2], label="phi (roll)")
-axs[2].set_ylabel("roll (rad)")
+slegers_discrete_dynamics = get_discrete_time_dynamics(slegers_continuous_dynamics, dt)
 
-axs[3].plot(ts, xs[:-1, 3], label="psi (yaw)")
-axs[3].set_ylabel("yaw (rad)")
+# control sequence:
+us_slegers = jnp.ones(N) * 5  # delta_a
 
-axs[3].set_xlabel("Time (s)")
+# initial state:
+x0_slegers = jnp.array(
+    [0.0, 0.0, -200.0, 5, 0.1, 10, 20 * DEG_TO_RAD, 2 * DEG_TO_RAD, 0, 0.0, 0.0, 0.0]
+)  # x, y, z, u, v, w, phi, theta, psi, p, q, r (imperial units)
 
-plt.tight_layout()
-plt.show()
+
+#######################
+## SIMULATE AND PLOT ##
+#######################
+start_time = time.time()
+# xs = simulate(x0_jann, us_jann, ts, jann_discrete_dynamics)
+xs = simulate(x0_slegers, us_slegers, ts, slegers_discrete_dynamics)
+end_time = time.time()
+print(f"Simulation run time: {end_time - start_time:.4f} seconds")
+
+# STATES
+# 0: x
+# 1: y
+# 2: z
+# 3: u (forward speed)
+# 4: v (side speed)
+# 5: w (down speed)
+# 6: phi (roll)
+# 7: theta (pitch)
+# 8: psi (yaw)
+# 9: p (roll rate)
+# 10: q (pitch rate)
+# 11: r (yaw rate)
+
+plot_selected_states(xs, [3, 4, 5, 6, 7, 8], ts)
+plot_slegers_3D(xs)
+# plot_jann_body(xs, ts)
