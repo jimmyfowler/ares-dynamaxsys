@@ -1,17 +1,21 @@
+import time
+
 import equinox
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import time
+import plotly.graph_objects as go
+import plotly.subplots as sp
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
 
 from dynamaxsys.base import get_discrete_time_dynamics
 from dynamaxsys.parafoil import JannParafoil4DOF, SlegersParafoil6DOF
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
 
 RAD_TO_DEG = 180.0 / jnp.pi
 DEG_TO_RAD = jnp.pi / 180.0
 KG_M3_TO_SLUG_FT3 = 0.00194032  # 1 kg/m^3 = 0.00194032 slug/ft^3
+
 
 @equinox.filter_jit
 def simulate(x0, us, ts, discrete_dynamics):
@@ -27,6 +31,7 @@ def simulate(x0, us, ts, discrete_dynamics):
     Returns:
         Array of states over time, shape (N+1, state_dim).
     """
+
     def scan_fn(x, ut):
         u, t = ut
         xn = discrete_dynamics(x, u, t)
@@ -39,6 +44,7 @@ def simulate(x0, us, ts, discrete_dynamics):
     _, xs = jax.lax.scan(scan_fn, x0, (us, ts))
 
     return jnp.concatenate([x0[None], xs], axis=0)
+
 
 @equinox.filter_jit
 def simulate_with_controller(x0, controller, ts, discrete_dynamics):
@@ -55,6 +61,7 @@ def simulate_with_controller(x0, controller, ts, discrete_dynamics):
     Returns:
         Array of states over time, shape (N+1, state_dim).
     """
+
     def scan_fn(x, t):
         u = controller(x)
         xn = discrete_dynamics(x, u, t)
@@ -84,6 +91,7 @@ def plot_jann_body(xs, ts):
     plt.tight_layout()
     plt.show()
 
+
 def get_state_label(idx):
     labels = [
         "x (ft)",
@@ -101,57 +109,71 @@ def get_state_label(idx):
     ]
     return labels[idx] if 0 <= idx < len(labels) else f"State {idx}"
 
+
 def plot_selected_states(xs, state_indices, ts):
-    num_states = len(state_indices)
-    fig, axs = plt.subplots(num_states, 1, figsize=(10, num_states))
+    fig = sp.make_subplots(rows=len(state_indices), cols=1, shared_xaxes=True)
+
     for i, idx in enumerate(state_indices):
-        axs[i].plot(ts, xs[:-1, idx])
-        label = get_state_label(idx)
-        axs[i].set_ylabel(label)
-    axs[-1].set_xlabel("Time (s)")
-    plt.tight_layout()
-    plt.show()
+        fig.add_trace(
+            go.Scatter(x=ts, y=xs[:-1, idx], name=get_state_label(idx)),
+            row=i + 1,
+            col=1,
+        )
+        fig.update_yaxes(title_text=get_state_label(idx), row=i + 1, col=1)
 
-def plot_slegers_3D(xs):
-    fig = plt.figure(figsize=(10, 6))
-    ax = fig.add_subplot(111, projection='3d')
+    fig.update_xaxes(title_text="Time (s)", row=len(state_indices), col=1)
+    fig.update_layout(height=200 * len(state_indices), showlegend=False)
+    fig.show()
 
+
+def plot_slegers_3D(xs, ts):
     # Get positions and forward speed
     x = xs[:, 0]
     y = xs[:, 1]
     z = -xs[:, 2]
     fwd_speed = xs[:, 3]
+    dwn_speed = xs[:, 5]
 
-    # Create a colormap based on forward speed
-    norm = plt.Normalize(fwd_speed.min(), fwd_speed.max())
-    colors = cm.viridis(norm(fwd_speed))
+    # Create a hover text that includes time
+    hover_text = [f'Time: {t:.2f}s<br>Down Speed: {ds:.2f} ft/s' for t, ds in zip(ts, dwn_speed)]
 
-    # Plot colored trajectory
-    for i in range(len(x) - 1):
-        ax.plot(x[i:i+2], y[i:i+2], z[i:i+2], color=colors[i])
+    fig = go.Figure(
+        data=[go.Scatter3d(
+            x=x,
+            y=y,
+            z=z,
+            mode="lines",
+            line=dict(color=dwn_speed, colorscale="viridis", width=4),
+            marker=dict(
+                color=dwn_speed,
+                colorscale="viridis",
+                size=4,
+            ),
+            text=hover_text,
+            hoverinfo='text'
+        )]
+    )
 
-    ax.set_xlabel('X Position (ft)')
-    ax.set_ylabel('Y Position (ft)')
-    ax.set_zlabel('Altitude (ft)')
-    ax.set_title('3D Trajectory of Slegers Parafoil')
-    ax.legend(['Parafoil Trajectory'])
-    ax.set_aspect('equal')
+    fig.update_layout(
+        scene=dict(
+            xaxis_title="X Position (ft)",
+            yaxis_title="Y Position (ft)",
+            zaxis_title="Altitude (ft)",
+            aspectmode="data",
+        ),
+        title="3D Trajectory of Slegers Parafoil",
+        coloraxis_colorbar=dict(title="Downward Speed (ft/s)"),
+    )
 
-    # Add colorbar
-    mappable = cm.ScalarMappable(norm=norm, cmap=cm.viridis)
-    mappable.set_array(fwd_speed)
-    cbar = plt.colorbar(mappable, ax=ax, pad=0.1, shrink=0.7)
-    cbar.set_label('Forward Speed (ft/s)')
-
-    plt.show()
+    fig.show()
 
 
 ################################
 ## Simulation Hyperparameters ##
 ################################
 dt = 0.01  # time step (seconds)
-time_horizon = 50  # total time (seconds)
-N = int(time_horizon / dt) # number of timesteps
+time_horizon = 30  # total time (seconds)
+N = int(time_horizon / dt)  # number of timesteps
 ts = jnp.arange(0, time_horizon, dt)
 
 
@@ -204,7 +226,7 @@ slegers_params = {
             [0.0, 0.1506, 0.0],
             [0.0025, 0.0, 0.0203],
         ]
-    ), # slug/ft^2
+    ),  # slug/ft^2
     "C_L0": 0.502,
     "C_D0": 0.173,
     "C_L_alpha": 3.256,
@@ -262,5 +284,5 @@ print(f"Simulation run time: {end_time - start_time:.4f} seconds")
 # 11: r (yaw rate)
 
 plot_selected_states(xs, [3, 4, 5, 6, 7, 8], ts)
-plot_slegers_3D(xs)
+plot_slegers_3D(xs, ts)
 # plot_jann_body(xs, ts)
