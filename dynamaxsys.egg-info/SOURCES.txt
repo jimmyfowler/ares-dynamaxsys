@@ -1,5 +1,6 @@
 README.md
 setup.py
+dynamaxsys/__init__.py
 dynamaxsys/base.py
 dynamaxsys/integrators.py
 dynamaxsys/parafoil.py
