@@ -12,6 +12,9 @@ from mpl_toolkits.mplot3d import Axes3D
 from dynamaxsys.base import get_discrete_time_dynamics
 from dynamaxsys.parafoil import JannParafoil4DOF, SlegersParafoil6DOF
 
+from model_parameters import slegers_6dof_nonlinear_params, jann_4dof_params
+
+
 RAD_TO_DEG = 180.0 / jnp.pi
 DEG_TO_RAD = jnp.pi / 180.0
 KG_M3_TO_SLUG_FT3 = 0.00194032  # 1 kg/m^3 = 0.00194032 slug/ft^3
@@ -91,35 +94,15 @@ def plot_jann_body(xs, ts):
     plt.tight_layout()
     plt.show()
 
-
-def get_state_label(idx):
-    labels = [
-        "x (ft)",
-        "y (ft)",
-        "z (ft)",
-        "u (ft/s)",
-        "v (ft/s)",
-        "w (ft/s)",
-        "phi (deg)",
-        "theta (deg)",
-        "psi (deg)",
-        "p (deg/s)",
-        "q (deg/s)",
-        "r (deg/s)",
-    ]
-    return labels[idx] if 0 <= idx < len(labels) else f"State {idx}"
-
-
-def plot_selected_states(xs, state_indices, us, ts):
-    fig = sp.make_subplots(rows=len(state_indices) + 1, cols=1, shared_xaxes=True)
-        
+def plot_states(xs, state_labels, state_indices, us, ts):
+    fig = sp.make_subplots(rows=len(state_labels) + 1, cols=1, shared_xaxes=True)
     for i, idx in enumerate(state_indices):
         fig.add_trace(
-            go.Scatter(x=ts, y=xs[:-1, idx], name=get_state_label(idx)),
+            go.Scatter(x=ts, y=xs[:-1, state_indices[i]], name=state_labels[i]),
             row=i + 1,
             col=1,
         )
-        fig.update_yaxes(title_text=get_state_label(idx), row=i + 1, col=1)
+        fig.update_yaxes(title_text=state_labels[i], row=i + 1, col=1)
     
     fig.add_trace(
         go.Scatter(x=ts, y=us, name="Control Input"),
@@ -179,7 +162,7 @@ def plot_slegers_3D(xs, ts):
 ## Simulation Hyperparameters ##
 ################################
 dt = 0.01  # time step (seconds)
-time_horizon = 20  # total time (seconds)
+time_horizon = 50  # total time (seconds)
 N = int(time_horizon / dt)  # number of timesteps
 ts = jnp.arange(0, time_horizon, dt)
 
@@ -187,20 +170,7 @@ ts = jnp.arange(0, time_horizon, dt)
 ##############################
 ## BUILD JANN 4DOF DYNAMICS ##
 ##############################
-jann_params = {
-    "m": 122.0,  # kg
-    "S": 23.36,  # m^2
-    "C_L0": 0.502,
-    "C_D0": 0.173,
-    "C_L_delta_s": 0.892,
-    "C_D_delta_s": 1.086,
-    "K_phi": 0.504,
-    "T_phi": 0.994,
-    "g": 9.81,  # m/s^2
-}
-
-jann_continuous_dynamics = JannParafoil4DOF(jann_params)
-
+jann_continuous_dynamics = JannParafoil4DOF(jann_4dof_params)
 jann_discrete_dynamics = get_discrete_time_dynamics(jann_continuous_dynamics, dt)
 
 # control sequence:
@@ -222,51 +192,41 @@ x0_jann = jnp.array(
 #################################
 ## BUILD SLEGERS 6DOF DYNAMICS ##
 #################################
-slegers_params = {
-    "m": 0.062,  # slugs
-    "S": 7.5,  # ft^2
-    "b": 4.25,  # ft
-    "c": 1.0,  # ft
-    "mmoi": jnp.array(
-        [
-            [0.1357, 0.0, 0.0025],
-            [0.0, 0.1506, 0.0],
-            [0.0025, 0.0, 0.0203],
-        ]
-    ),  # slug/ft^2
-    "C_L0": 0.502,
-    "C_D0": 0.173,
-    "C_L_alpha": 3.256,
-    "C_D_alpha2": 1.984,
-    "C_L_delta_a": 0.892,
-    "C_D_delta_a": 0.298,
-    "C_lphi": -0.0100,
-    "C_lp": -0.0520,
-    "C_l_delta_a": 0.0021,
-    # Pitching-moment coefficients (reasonable for parafoil)
-    "C_m0": 0.02,  # zero-lift pitching moment
-    "C_m_alpha": -0.05,  # pitching moment due to angle of attack (-0.05)
-    "C_mq": -0.4,  # pitching moment due to pitch rate
-    "C_m_delta_s": -0.02,  # pitching moment due to trailing edge deflection
-    "C_n_r": -0.0850,
-    "C_n_delta_a": 0.0010,
-    "rho": 0.0023769,  # slug/ft^3 (sea level)
-    "g": 32.174,  # ft/s^2
-}
-
-slegers_continuous_dynamics = SlegersParafoil6DOF(slegers_params)
-
+slegers_continuous_dynamics = SlegersParafoil6DOF(slegers_6dof_nonlinear_params)
 slegers_discrete_dynamics = get_discrete_time_dynamics(slegers_continuous_dynamics, dt)
 
 # control sequence:
-# us_slegers = jnp.ones(N) * 1  # delta_a
-us_slegers = jnp.zeros(N) # no control
-# us_slegers = us_slegers.at[N // 2 :].set(5.0) # second half turn
 
-# initial state:
-x0_slegers = jnp.array(
-    [0.0, 0.0, -200.0, 10, 0.1, 10, 20 * DEG_TO_RAD, 2 * DEG_TO_RAD, 0, 0.0, 0.0, 0.0]
-)  # x, y, z, u, v, w, phi, theta, psi, p, q, r (imperial units)
+# us_slegers = jnp.ones(N) * 1  # delta_a
+# us_slegers = jnp.zeros(N) # no control
+# us_slegers = us_slegers.at[N // 2 :].set(2.0) # second half turn
+
+# build a control input that starts at zero, ramps up to ramp_max 
+# from T/2 to (T/2 + ramp_time), and stays at ramp_max indefinitely
+ramp_max = 1.0
+ramp_time = 3.0 # seconds
+ramp_start_time = ts[N//2]
+u_interp = jnp.array([0, 0, ramp_max, ramp_max]) 
+t_interp = jnp.array([0, ramp_start_time, ramp_start_time+ramp_time, ts[-1]])
+us_slegers = jnp.interp(ts, t_interp, u_interp)
+
+# Initial state (imperial units):
+slegers_initial_state = {
+    "x": 0.0, # ft
+    "y": 0.0,
+    "z": -200.0,
+    "u": 10.0, # ft/s
+    "v": 0.1,
+    "w": 10.0,
+    "phi": 20 * DEG_TO_RAD, # deg -> rad
+    "theta": 2 * DEG_TO_RAD,
+    "psi": 0.0 * DEG_TO_RAD, 
+    "p": 0.0 * DEG_TO_RAD, # deg/s -> rad/s
+    "q": 0.0 * DEG_TO_RAD,
+    "r": 0.0 * DEG_TO_RAD,
+}
+
+x0_slegers = jnp.array(list(slegers_initial_state.values()))
 
 
 #######################
@@ -297,7 +257,24 @@ print(f"(total simulation frames: {N})")
 for i in range(6, 12):
     xs = xs.at[:, i].set(xs[:, i] * RAD_TO_DEG)
 
+label_idx_to_plot = {
+        # "x (ft)": 0,
+        # "y (ft)": 1,
+        # "z (ft)": 2,
+        "u (ft/s)": 3,
+        "v (ft/s)": 4,
+        "w (ft/s)": 5,
+        "phi (deg)": 6,
+        "theta (deg)": 7,
+        "psi (deg)": 8,
+        # "p (deg/s)": 9,
+        # "q (deg/s)": 10,
+        # "r (deg/s)": 11,
+    }
+labels = list(label_idx_to_plot.keys())
+indices = list(label_idx_to_plot.values())
+
 plot_slegers_3D(xs, ts)
-plot_selected_states(xs, [3, 4, 5, 6, 7, 8], us_slegers, ts)
+plot_states(xs, labels, indices, us_slegers, ts)
 
 # plot_jann_body(xs, ts)

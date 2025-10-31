@@ -1,3 +1,8 @@
 .vscode/settings.json
 .vscode/launch.json
 simulator/tempCodeRunnerFile.py
+simulator/__pycache__/simulator.cpython-39.pyc
+simulator/__pycache__/model_parameters.cpython-39.pyc
+dynamaxsys/__pycache__/parafoil.cpython-39.pyc
+dynamaxsys/__pycache__/parafoil.cpython-39.pyc
+dynamaxsys/__pycache__/parafoil.cpython-39.pyc

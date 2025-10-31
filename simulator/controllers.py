@@ -28,7 +28,7 @@ class PID:
 class TwelveStateHeadingController:
     """
     A heading controller for a 12-state parafoil model using PID control.
-    Assumes the parafoil is desired to land at the inertial origin (x,y = 0,0)
+    Assumes the parafoil is desired to land at the inertial origin (x,y,z = 0,0,0)
 
     Args:
         continuous_dynamics: function representing the continuous-time dynamics of the parafoil.
