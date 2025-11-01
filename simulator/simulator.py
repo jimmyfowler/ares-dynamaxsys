@@ -6,11 +6,11 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import plotly.subplots as sp
-from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
 
 from dynamaxsys.base import get_discrete_time_dynamics
 from dynamaxsys.parafoil import JannParafoil4DOF, SlegersParafoil6DOF
+
+import controllers
 
 from model_parameters import slegers_6dof_nonlinear_params, jann_4dof_params
 
@@ -21,7 +21,7 @@ KG_M3_TO_SLUG_FT3 = 0.00194032  # 1 kg/m^3 = 0.00194032 slug/ft^3
 
 
 @equinox.filter_jit
-def simulate(x0, us, ts, discrete_dynamics):
+def simulate(x0, us, ds, ts, discrete_dynamics):
     """
     Simulates the system dynamics over time using a discrete-time model.
 
@@ -35,42 +35,46 @@ def simulate(x0, us, ts, discrete_dynamics):
         Array of states over time, shape (N+1, state_dim).
     """
 
-    def scan_fn(x, ut):
-        u, t = ut
-        xn = discrete_dynamics(x, u, t)
+    def scan_fn(x: jnp.ndarray, udt: tuple):
+        u, d, t = udt
+        xn = discrete_dynamics(x, u, d, t)
         return xn, xn
 
     # The scan input is a tuple (us, ts), where:
     #   us: control input sequence, shape (N, control_dim)
     #   ts: time steps, shape (N,)
     # This allows scan_fn to receive both the control input and time at each step.
-    _, xs = jax.lax.scan(scan_fn, x0, (us, ts))
+    _, xs = jax.lax.scan(scan_fn, x0, (us, ds, ts))
 
     return jnp.concatenate([x0[None], xs], axis=0)
 
 
 @equinox.filter_jit
-def simulate_with_controller(x0, controller, ts, discrete_dynamics):
+def simulate_with_controller(x0, discrete_dynamics, controller, ds, ts):
     """
-    Simulates the system dynamics over time using a discrete-time model
-    and controller.
+    Simulates the system dynamics over time using a discrete-time model,
+    disturbances, and a controller.
 
     Args:
         x0: Initial state, shape (state_dim,).
+        discrete_dynamics: Function that computes next state given (x, u, d, t).
         controller: a function that takes the current state as an argument and outputs a control.
+        ds: Disturbance sequence, shape (N, disturbance_dim).
         ts: Time steps, shape (N,).
-        discrete_dynamics: Function that computes next state given (x, u, t).
 
     Returns:
         Array of states over time, shape (N+1, state_dim).
     """
+    dts = jnp.ones(N) * (ts[1] - ts[0])  # assume uniform time steps
 
-    def scan_fn(x, t):
-        u = controller(x)
-        xn = discrete_dynamics(x, u, t)
-        return xn, xn
+    def scan_fn(carry, ctrl_disturb_t_dt):
+        x, controller = carry
+        d, t, dt = ctrl_disturb_t_dt
+        u = controller(x, dt)
+        xn = discrete_dynamics(x, u, d, t)
+        return (xn, controller), xn
 
-    _, xs = jax.lax.scan(scan_fn, x0, ts)
+    _, xs = jax.lax.scan(scan_fn, (x0, controller), (ds, ts, dts))
 
     return jnp.concatenate([x0[None], xs], axis=0)
 
@@ -203,12 +207,20 @@ slegers_discrete_dynamics = get_discrete_time_dynamics(slegers_continuous_dynami
 
 # build a control input that starts at zero, ramps up to ramp_max 
 # from T/2 to (T/2 + ramp_time), and stays at ramp_max indefinitely
-ramp_max = 1.0
+ramp_max = 0
 ramp_time = 3.0 # seconds
 ramp_start_time = ts[N//2]
 u_interp = jnp.array([0, 0, ramp_max, ramp_max]) 
 t_interp = jnp.array([0, ramp_start_time, ramp_start_time+ramp_time, ts[-1]])
 us_slegers = jnp.interp(ts, t_interp, u_interp)
+
+# disturbance sequence (wind in x,y,z)
+wind_x = jnp.zeros(N)
+wind_y = jnp.ones(N) * -5 # ft/s
+wind_z = jnp.zeros(N)
+ds_slegers = jnp.stack([wind_x, wind_y, wind_z], axis=1) # shape (N, 3) for jax.lax.scan
+# OR
+# ds_slegers = jnp.zeros((N, 3))  # no wind disturbance
 
 # Initial state (imperial units):
 slegers_initial_state = {
@@ -233,8 +245,13 @@ x0_slegers = jnp.array(list(slegers_initial_state.values()))
 ## SIMULATE AND PLOT ##
 #######################
 start_time = time.time()
-# xs = simulate(x0_jann, us_jann, ts, jann_discrete_dynamics)
-xs = simulate(x0_slegers, us_slegers, ts, slegers_discrete_dynamics)
+# xs = simulate(x0_jann, us_jann, ds_jann, ts, jann_discrete_dynamics)
+# xs = simulate(x0_slegers, us_slegers, ds_slegers, ts, slegers_discrete_dynamics)
+
+heading_controller = controllers.TwelveStateHeadingController(kp=0.5, ki=0.0, kd=0.1)
+xs = simulate_with_controller(x0_slegers, slegers_discrete_dynamics,
+                              heading_controller, 
+                              ds_slegers, ts)
 end_time = time.time()
 print(f"Simulation run time: {end_time - start_time:.4f} seconds")
 print(f"(total simulation frames: {N})")
