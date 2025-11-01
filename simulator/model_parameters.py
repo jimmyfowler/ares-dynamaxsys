@@ -24,7 +24,7 @@ slegers_6dof_nonlinear_params = {
     "C_lp": -0.0520,
     "C_l_delta_a": 0.0021,
 
-    # Pitching-moment coefficients (reasonable for parafoil)
+    # Pitching-moment coefficients (manual estimations)
     "C_m0": 0.02,  # zero-lift pitching moment
     "C_m_alpha": -0.05,  # pitching moment due to angle of attack (-0.05)
     "C_mq": -0.4,  # pitching moment due to pitch rate
