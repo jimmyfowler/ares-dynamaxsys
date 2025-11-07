@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 from dynamaxsys.base import Dynamics
 
+
 def getInertialToBodyRotationMatrix(phi, theta, psi):
     """
     Computes the rotation matrix to transform vectors from the inertial frame to body frame
@@ -40,9 +41,11 @@ def getInertialToBodyRotationMatrix(phi, theta, psi):
 
     return inertial_to_body
 
+
 class JannParafoil4DOF(Dynamics):
     state_dim: int = 4  # u, w, phi, psi
     control_dim: int = 2  # delta_a, delta_s
+    disturbance_dim: int = 3  # wind velocity in x, y, z
 
     m: float  # mass
     S: float  # parafoil area
@@ -65,9 +68,10 @@ class JannParafoil4DOF(Dynamics):
         self.T_phi = params["T_phi"]
         self.g = params["g"]
 
-        def dynamics_func(state, control, time=0):
+        def dynamics_func(state, control, disturbance=0, time=0):
             u, w, phi, psi = state
             delta_a, delta_s = control
+            # wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances
 
             # Aerodynamics
             C_L = self.C_L0 + self.C_L_delta_s * delta_s  # Lift coefficient
@@ -87,7 +91,7 @@ class JannParafoil4DOF(Dynamics):
             )  # Yaw rate
 
             u_dot = (
-                L * jnp.sin(alpha) - D * jnp.cos(alpha) 
+                L * jnp.sin(alpha) - D * jnp.cos(alpha)
             ) / self.m - w * psi_dot * jnp.sin(phi) / self.m  # fwd accel
 
             w_dot = (
@@ -101,9 +105,11 @@ class JannParafoil4DOF(Dynamics):
         # initialize super class Dynamics object
         super().__init__(dynamics_func, self.state_dim, self.control_dim)
 
+
 class SlegersParafoil6DOF(Dynamics):
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
     control_dim: int = 1  # delta_a
+    disturbance_dim: int = 3  # wind velocity in x, y, z
 
     # Physical parameters
     m: float  # mass (kg)
@@ -162,9 +168,10 @@ class SlegersParafoil6DOF(Dynamics):
         self.C_n_r = params["C_n_r"]
         self.C_n_delta_a = params["C_n_delta_a"]
 
-        def dynamics_func(state, control, time=0):
+        def dynamics_func(state, control, disturbance=[0, 0, 0], time=0):
             x, y, z, u, v, w, phi, theta, psi, p, q, r = state
             delta_a = control
+            wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance
 
             skew_symmetric_pqr = jnp.array([[0, -r, q], [r, 0, -p], [-q, p, 0]])
 
@@ -184,8 +191,8 @@ class SlegersParafoil6DOF(Dynamics):
             D_div_Va = 0.5 * self.rho * V_a * self.S * C_D  # Drag
 
             # Aerodynamic Force
-            aero_force = (
-                L_div_Va * jnp.array([w, 0, -u]) - D_div_Va * jnp.array([u, v, w])
+            aero_force = L_div_Va * jnp.array([w, 0, -u]) - D_div_Va * jnp.array(
+                [u, v, w]
             )
 
             # Aerodynamic Moment
@@ -207,7 +214,6 @@ class SlegersParafoil6DOF(Dynamics):
                     ]
                 )
             )
-                        
 
             # Weight Force
             weight_force = (
@@ -225,14 +231,12 @@ class SlegersParafoil6DOF(Dynamics):
             ## EQUATIONS OF MOTION ##
 
             # inertial-frame velocity
-            xyz_dot = body_to_inertial @ jnp.array([u, v, w])
+            xyz_dot = body_to_inertial @ jnp.array([u, v, w]) + disturbance
 
             # body-frame translation dynamics
             uvw_dot_force = 1 / self.m * (aero_force + weight_force)
 
-            uvw_dot_coriolis = (
-                -skew_symmetric_pqr @ jnp.array([u, v, w])
-            )
+            uvw_dot_coriolis = -skew_symmetric_pqr @ jnp.array([u, v, w])
 
             uvw_dot = uvw_dot_force + uvw_dot_coriolis
 
@@ -249,8 +253,7 @@ class SlegersParafoil6DOF(Dynamics):
 
             # body frame rotational dynamics
             pqr_dot = self.mmoi_inverse @ (
-                aero_moment
-                - skew_symmetric_pqr @ self.mmoi @ jnp.array([p, q, r])
+                aero_moment - skew_symmetric_pqr @ self.mmoi @ jnp.array([p, q, r])
             )
 
             return jnp.concatenate([xyz_dot, uvw_dot, euler_dot, pqr_dot])
