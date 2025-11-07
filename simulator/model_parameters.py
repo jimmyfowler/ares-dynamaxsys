@@ -27,10 +27,10 @@ slegers_6dof_nonlinear_params = {
     # Pitching-moment coefficients (manual estimations)
     "C_m0": 0.02,  # zero-lift pitching moment
     "C_m_alpha": -0.05,  # pitching moment due to angle of attack (-0.05)
-    "C_mq": -0.4,  # pitching moment due to pitch rate
+    "C_mq": -0.5,  # pitching moment due to pitch rate
     "C_m_delta_s": -0.02,  # pitching moment due to trailing edge deflection
     "C_n_r": -0.0850,
-    "C_n_delta_a": 0.0010,
+    "C_n_delta_a": 0.0005, #0.0010
     "rho": 0.0023769,  # slug/ft^3 (sea level)
     "g": 32.174,  # ft/s^2
 }

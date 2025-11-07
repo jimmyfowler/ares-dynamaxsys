@@ -1,5 +1,5 @@
 README.md
-setup.py
+pyproject.toml
 dynamaxsys/__init__.py
 dynamaxsys/base.py
 dynamaxsys/integrators.py

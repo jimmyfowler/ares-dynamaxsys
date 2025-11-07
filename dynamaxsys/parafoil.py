@@ -260,3 +260,20 @@ class SlegersParafoil6DOF(Dynamics):
 
         # initialize superclass Dynamics object
         super().__init__(dynamics_func, self.state_dim, self.control_dim)
+
+
+if __name__ == "__main__":
+    # test rotation matrix
+    phi = 0 * jnp.pi / 180.0
+    theta = 0 * jnp.pi / 180.0
+    psi = 90 * jnp.pi / 180.0
+
+    R = getInertialToBodyRotationMatrix(phi, theta, psi)
+    print("R (inertial to body):\n", R)
+    print("R.T (body to inertial):\n", R.T)
+    print("R @ R.T (should be identity):\n", (R @ R.T).round(6))
+    
+    uvw = jnp.array([1.0, 0.0, 1.0])  # forward in body
+    xyz_dot = R.T @ uvw # body to inertial
+    print("uvw (body velocity):", uvw)
+    print("xyz_dot (inertial velocity):", xyz_dot)
