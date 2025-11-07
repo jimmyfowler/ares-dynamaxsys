@@ -23,15 +23,27 @@ class PID:
             self.kd * derivative
         )
         return output
+    
+
+class dummyController:
+    """
+    A dummy controller for testing simulation
+    """
+    def __init__(self, control_dim):
+        self.control_dim = control_dim
+
+    def __call__(self, x, dt=0.1):
+
+        return x[1]
 
 
 class TwelveStateHeadingController:
     """
-    A heading controller for a 12-state parafoil model using PID control.
-    Assumes the parafoil is desired to land at the inertial origin (x,y,z = 0,0,0)
+    A heading controller for a 12-state aircraft using PID control.
+    Assumes the aircraft is desired to land at the inertial origin (x,y,z = 0,0,0)
 
     Args:
-        continuous_dynamics: function representing the continuous-time dynamics of the parafoil.
+        continuous_dynamics: function representing the continuous-time dynamics of the aircraft.
         kp: Proportional gain for the PID controller.
         ki: Integral gain for the PID controller.
         kd: Derivative gain for the PID controller.
