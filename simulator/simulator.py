@@ -145,7 +145,7 @@ def plot_states(xs, state_labels, state_indices, us, ts):
     fig.show()
 
 
-def plot_slegers_3D(xs, ts):
+def plot_3D_traj(xs, ts):
     # Get positions and forward speed
     x = xs[:, 0]
     y = xs[:, 1]
@@ -199,7 +199,7 @@ def plot_slegers_3D(xs, ts):
             zaxis_title="Altitude (ft)",
             aspectmode="data",
         ),
-        title="3D Trajectory of Slegers Parafoil",
+        title="3D Trajectory",
     )
 
     fig.show()

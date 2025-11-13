@@ -1,2 +1,0 @@
-import cvxpy as cp
-
