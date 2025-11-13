@@ -30,7 +30,7 @@ slegers_6dof_nonlinear_params = {
     "C_mq": -0.5,  # pitching moment due to pitch rate
     "C_m_delta_s": -0.02,  # pitching moment due to trailing edge deflection
     "C_n_r": -0.0850,
-    "C_n_delta_a": 0.0005, #0.0010
+    "C_n_delta_a": 0.0010, #0.001 # yaw moment due to asymetric deflection
     "rho": 0.0023769,  # slug/ft^3 (sea level)
     "g": 32.174,  # ft/s^2
 }
