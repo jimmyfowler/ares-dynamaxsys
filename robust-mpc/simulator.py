@@ -190,13 +190,26 @@ def plot_3D_traj(xs, ts):
         showlegend=True,
     )
 
-    fig = go.Figure(data=[traj_trace, start_trace])
+    target_zone_trace = go.Scatter3d(
+        x=[0.0],
+        y=[0.0],
+        z=[0.0],
+        mode="markers",
+        marker=dict(size=8, color="red", symbol="circle"),
+        name="Target Zone",
+        hovertext="Target Zone Center",
+    )
+
+    fig = go.Figure(data=[traj_trace, start_trace, target_zone_trace])
 
     fig.update_layout(
         scene=dict(
-            xaxis_title="X Position (ft)",
-            yaxis_title="Y Position (ft)",
-            zaxis_title="Altitude (ft)",
+            # xaxis_title="X Position (ft)",
+            # yaxis_title="Y Position (ft)",
+            # zaxis_title="Altitude (ft)",
+            xaxis=dict(nticks=4, range=[-500, 500], title="X Position (ft)"),
+            yaxis=dict(nticks=4, range=[-500, 500], title="Y Position (ft)"),
+            zaxis=dict(nticks=4, range=[0, 500], title="Altitude (ft)"),
             aspectmode="data",
         ),
         title="3D Trajectory",

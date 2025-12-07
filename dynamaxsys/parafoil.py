@@ -106,6 +106,99 @@ class JannParafoil4DOF(Dynamics):
         super().__init__(dynamics_func, self.state_dim, self.control_dim)
 
 
+class JannParafoil4DOF2(Dynamics):
+    state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
+    control_dim: int = 1  # delta_a
+    disturbance_dim: int = 3  # wind velocity in x, y, z
+
+    m: float  # mass
+    S: float  # parafoil area
+    C_L0: float  # baseline lift coefficient
+    C_D0: float  # baseline drag coefficient
+    C_L_delta_s: float  # lift coefficient per unit deflection of steering line
+    C_D_delta_s: float  # drag coefficient per unit deflection of steering line
+    K_phi: float  # roll model gain
+    T_phi: float  # roll model time constant
+    g: float  # gravity constant
+
+    def __init__(self, params: dict):
+        self.m = params["m"]
+        self.S = params["S"]
+        self.C_L0 = params["C_L0"]
+        self.C_D0 = params["C_D0"]
+        self.C_L_delta_s = params["C_L_delta_s"]
+        self.C_D_delta_s = params["C_D_delta_s"]
+        self.K_phi = params["K_phi"]
+        self.T_phi = params["T_phi"]
+        self.g = params["g"]
+
+        def dynamics_func(state, control, disturbance=0, time=0):
+            x, y, z, u, v, w, phi, theta, psi, p, q, r = state
+            delta_a, delta_s = control
+            wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances
+
+            # Aerodynamics
+            C_L = self.C_L0 + self.C_L_delta_s * delta_s  # Lift coefficient
+            C_D = self.C_D0 + self.C_D_delta_s * delta_s  # Drag coefficient
+            V_a = jnp.sqrt(u**2 + w**2)  # Airspeed
+            alpha = jnp.arctan2(w, u)  # Angle of Attack
+            rho = 1.225  # Air density at sea level
+
+            L = 0.5 * rho * V_a**2 * self.S * C_L  # Lift
+            D = 0.5 * rho * V_a**2 * self.S * C_D  # Drag
+
+            # Equations of motion
+            phi_dot = (self.K_phi * delta_a - phi) / self.T_phi  # Roll rate
+
+            theta_dot = 0.0  # assume no pitch
+
+            psi_dot = self.g / u * jnp.tan(phi) + w * phi_dot / (
+                u * jnp.cos(phi)
+            )  # Yaw rate
+
+            u_dot = (
+                L * jnp.sin(alpha) - D * jnp.cos(alpha)
+            ) / self.m - w * psi_dot * jnp.sin(phi) / self.m  # fwd accel
+
+            v_dot = 0.0  # assume no side velocity
+
+            w_dot = (
+                (-L * jnp.cos(alpha) - D * jnp.sin(alpha)) / self.m
+                + self.g * jnp.cos(phi)
+                + u * psi_dot * jnp.sin(phi)
+            )  # down accel
+
+            
+
+            ## ADDING THESE
+            inertial_to_body = getInertialToBodyRotationMatrix(phi, theta, psi)
+            body_to_inertial = inertial_to_body.T  # rotation matrix is orthogonal
+
+            # inertial-frame velocity
+            xyz_dot = body_to_inertial @ jnp.array([u, v, w]) + disturbance
+
+            uvw_dot = jnp.array([u_dot, v_dot, w_dot])
+
+            pqr_to_euler_dot = jnp.array(
+                [
+                    [1, jnp.sin(phi) * jnp.tan(theta), jnp.cos(phi) * jnp.tan(theta)],
+                    [0, jnp.cos(phi), -jnp.sin(phi)],
+                    [0, jnp.sin(phi) / jnp.cos(theta), jnp.cos(phi) / jnp.cos(theta)],
+                ]
+            )
+            euler_to_pqr_dot = pqr_to_euler_dot.T
+
+            # euler angle dynamics (from body rates)
+            euler_dot = jnp.array([phi_dot, theta_dot, psi_dot])
+
+            # body frame rotational dynamics
+            pqr_dot = euler_to_pqr_dot @ euler_dot
+
+            return jnp.concatenate([xyz_dot, uvw_dot, euler_dot, pqr_dot])
+
+        # initialize super class Dynamics object
+        super().__init__(dynamics_func, self.state_dim, self.control_dim)
+
 class SlegersParafoil6DOF(Dynamics):
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
     control_dim: int = 1  # delta_a

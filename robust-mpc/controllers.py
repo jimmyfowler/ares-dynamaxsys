@@ -20,6 +20,11 @@ class PID(eqx.Module):
         )
         prev_error = error
         control_input = self.kp * error + self.ki * integral + self.kd * derivative
+
+        # Saturate output
+        control_input = jnp.clip(control_input, -2.0, 2.0)
+
+        # Update control state
         new_ctrl_state = jnp.array([integral, prev_error])
 
         return control_input, new_ctrl_state
