@@ -202,15 +202,21 @@ def plot_3D_traj(xs, ts):
 
     fig = go.Figure(data=[traj_trace, start_trace, target_zone_trace])
 
+    # xr = max(x) - min(x)
+    # yr = max(y) - min(y)
+    # zr = max(z) - min(z)
+
     fig.update_layout(
         scene=dict(
-            # xaxis_title="X Position (ft)",
-            # yaxis_title="Y Position (ft)",
-            # zaxis_title="Altitude (ft)",
-            xaxis=dict(nticks=4, range=[-500, 500], title="X Position (ft)"),
-            yaxis=dict(nticks=4, range=[-500, 500], title="Y Position (ft)"),
-            zaxis=dict(nticks=4, range=[0, 500], title="Altitude (ft)"),
+            xaxis_title="X Position (ft)",
+            yaxis_title="Y Position (ft)",
+            zaxis_title="Altitude (ft)",
+            # xaxis=dict(nticks=4, range=[-500, 500], title="X Position (ft)"),
+            # yaxis=dict(nticks=4, range=[-500, 500], title="Y Position (ft)"),
+            # zaxis=dict(nticks=4, range=[0, 500], title="Altitude (ft)"),
             aspectmode="data",
+            # aspectmode = "manual",
+            # aspectratio = dict(x=500, y=500, z=500),
         ),
         title="3D Trajectory",
     )
