@@ -8,13 +8,13 @@ class PID(eqx.Module):
     kp: float
     ki: float
     kd: float
-    max_output: float = None # upper bound saturation
-    min_output: float = None # lower bound saturation
-    rate_limit: float = None # max rate of change of output 
+    max_output: float = None  # upper bound saturation
+    min_output: float = None  # lower bound saturation
+    rate_limit: float = None  # max rate of change of output
     # TODO: make actuator class instead of rate limit here
 
     def compute(self, ctrl_state, error, dt):
-        integral, prev_error, prev_control_input = ctrl_state
+        integral, prev_error, prev_control_input, spiraling = ctrl_state
         integral += error * dt
         derivative = jax.lax.cond(
             dt > 0.0,  # conditional to avoid division by zero
@@ -37,8 +37,8 @@ class PID(eqx.Module):
             control_input = jnp.clip(control_input, self.min_output, self.max_output)
 
         # Update control state
-        new_ctrl_state = jnp.array([integral, prev_error, control_input])
-        
+        new_ctrl_state = integral, prev_error, control_input, spiraling
+
         return control_input, new_ctrl_state
 
 
@@ -63,7 +63,12 @@ class TwelveStateHeadingController(PID):
         kp: Proportional gain for the PID controller.
         ki: Integral gain for the PID controller.
         kd: Derivative gain for the PID controller.
+        TODO: UPDATE
     """
+
+    spiral_mode: bool = False  # spiral once above target
+    inner_spiral_range: float = 0.0
+    outer_spiral_range: float = 0.0
 
     def get_heading(self, x):
         phi, theta, psi = x[6], x[7], x[8]  # roll, pitch, yaw angles
@@ -89,12 +94,49 @@ class TwelveStateHeadingController(PID):
         current_heading = self.get_heading(x)  # rad
         desired_heading = self.get_desired_heading(x)  # rad
         heading_error = desired_heading - current_heading
-        heading_error_wrapped = jnp.mod(heading_error + jnp.pi, 2*jnp.pi) - jnp.pi
+        heading_error_wrapped = jnp.mod(heading_error + jnp.pi, 2 * jnp.pi) - jnp.pi
         return heading_error_wrapped
 
-    def __call__(self, x, ctrl_state, dt=0.1):
+    def get_horiz_distance_to_target(self, x):
+        position = x[0:2]
+        distance = jnp.linalg.norm(position)
+        return distance
+
+    def __call__(self, x, ctrl_state, dt):
+        distance = self.get_horiz_distance_to_target(x)
+
+        # compute normal PID output
         heading_error = self.get_heading_error(x)
-        return self.compute(ctrl_state, heading_error, dt)
+        pid_control_input, new_ctrl_state = self.compute(ctrl_state, heading_error, dt)
+        
+        # get spiraling flag from current ctrl state
+        _, _, _, spiraling = ctrl_state
+
+        # Handle spiral mode with JAX ops
+        # Convert static Python bool -> JAX scalar, and use logical ops on traced distance
+        spiral_flag = jnp.array(self.spiral_mode)
+        spiral_range = jnp.where(
+            spiraling,
+            jnp.array(self.outer_spiral_range), # use outer range if already spiraling
+            jnp.array(self.inner_spiral_range), # use inner range to start spiraling
+        ) 
+        spiral_cond = jnp.logical_and(spiral_flag, distance < spiral_range)
+
+        # control input when spiralling (scalar)
+        spiral_control = jnp.array(
+            self.max_output if self.max_output is not None else 0.0
+        )
+
+        # choose control and controller state using JAX selection
+        # Use JAX ops for control selection to ensure tracing compatibility and avoid static Python control flow issues
+        control_input = jnp.where(spiral_cond, spiral_control, pid_control_input)
+
+        # update spiraling flag and ctrl state
+        spiraling_new = jnp.where(spiral_cond, True, spiraling)
+        integral_new, prev_error_new, prev_u_new, _ = new_ctrl_state
+        new_ctrl_state = integral_new, prev_error_new, prev_u_new, spiraling_new
+
+        return control_input, new_ctrl_state
 
 
 class ModelPredictiveController:
@@ -113,23 +155,37 @@ class ModelPredictiveController:
 # Example usage:
 if __name__ == "__main__":
     DEG_TO_RAD = jnp.pi / 180.0
-    heading_controller = TwelveStateHeadingController(kp=1, ki=0.01, kd=0.1)
+    heading_controller = TwelveStateHeadingController(
+        kp=1,
+        ki=0.0,
+        kd=0.1,
+        max_output=4.0,
+        min_output=-4.0,
+        rate_limit=0.5,
+        spiral_mode=True,
+        inner_spiral_range=50.0,
+        outer_spiral_range=100.0,
+    )
     slegers_initial_state = {
-        "x": 1000.0,  # ft
-        "y": 1000.0,
-        "z": -2000.0,
+        "x": -500.0,  # ft
+        "y": 100.0,
+        "z": 300.0,
         "u": 10.0,  # ft/s
         "v": 0.1,
-        "w": 10.0,
-        "phi": 20 * DEG_TO_RAD,  # deg -> rad
+        "w": 5.0,
+        "phi": 10 * DEG_TO_RAD,  # deg -> rad
         "theta": 2 * DEG_TO_RAD,
-        "psi": 0.0 * DEG_TO_RAD,
+        "psi": 180.0 * DEG_TO_RAD,
         "p": 0.0 * DEG_TO_RAD,  # deg/s -> rad/s
         "q": 0.0 * DEG_TO_RAD,
         "r": 0.0 * DEG_TO_RAD,
     }
-    x_sample = jnp.array(list(slegers_initial_state.values()))
-    initial_error = heading_controller.get_heading_error(x_sample)
-    ctrl_state0 = jnp.array([0.0, initial_error])  # [integral, prev_err]
-    u, new_state = heading_controller(x_sample, ctrl_state0, 0.01)  # non-jitted call
-    print(u, new_state)  # regular Python-level print works here
+    x_0 = jnp.array(list(slegers_initial_state.values()))
+    ctrl_state0 = (
+        jnp.array(0.0),     # integral 
+        jnp.array(0.0),     # prev_error
+        jnp.array(0.0),     # prev_control_input
+        jnp.array(False),   # spiraling flag
+    )  
+    u, new_state = heading_controller(x_0, ctrl_state0, 0.01)  # non-jitted call
+    print(u, new_state)
