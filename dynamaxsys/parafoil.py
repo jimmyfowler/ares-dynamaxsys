@@ -107,8 +107,15 @@ class JannParafoil4DOF(Dynamics):
 
 
 class JannParafoil4DOF2(Dynamics):
+    """
+    4DOF model by Thomas Jann 
+    DOI: https://doi.org/10.2514/6.2001-2016
+
+    Assumes roll angle changes due to asymmetric deflection with a first order delay
+    and yaw rate is coupled nonlinearly with roll angle
+    """
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
-    control_dim: int = 1  # delta_a
+    control_dim: int = 2  # delta_a, delta_s
     disturbance_dim: int = 3  # wind velocity in x, y, z
 
     m: float  # mass
