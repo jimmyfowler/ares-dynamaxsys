@@ -40,6 +40,44 @@ class PID(eqx.Module):
         new_ctrl_state = integral, prev_error, control_input, spiraling
 
         return control_input, new_ctrl_state
+    
+class PID(eqx.Module):
+    kp: float
+    ki: float
+    kd: float
+    freq_lpf: float = None
+    max_output: float = None  # upper bound saturation
+    min_output: float = None  # lower bound saturation
+    rate_limit: float = None  # max rate of change of output
+    # TODO: make actuator class instead of rate limit here
+
+    def compute(self, ctrl_state, error, dt):
+        integral, prev_error, prev_control_input, spiraling = ctrl_state
+        integral += error * dt
+        derivative = jax.lax.cond(
+            dt > 0.0,  # conditional to avoid division by zero
+            lambda d: (error - prev_error) / d,  # true branch
+            lambda d: 0.0,  # false branch
+            dt,
+        )
+        prev_error = error
+        control_input = self.kp * error + self.ki * integral + self.kd * derivative
+
+        # Rate limiting (TODO: move to actuator class)
+        if self.rate_limit is not None:
+            max_delta = self.rate_limit * dt
+            delta = control_input - prev_control_input
+            delta = jnp.clip(delta, -max_delta, max_delta)
+            control_input = prev_control_input + delta
+
+        # Saturate output
+        if self.max_output is not None:
+            control_input = jnp.clip(control_input, self.min_output, self.max_output)
+
+        # Update control state
+        new_ctrl_state = integral, prev_error, control_input, spiraling
+
+        return control_input, new_ctrl_state
 
 
 class DummyController:
