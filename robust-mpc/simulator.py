@@ -220,5 +220,5 @@ def plot_3D_traj(xs, ts):
         ),
         title="3D Trajectory",
     )
-
-    fig.show()
+    
+    fig.show(renderer="browser")
