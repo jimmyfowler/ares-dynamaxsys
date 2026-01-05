@@ -3,6 +3,54 @@ import jax.numpy as jnp
 import equinox as eqx
 from dynamaxsys.parafoil import getInertialToBodyRotationMatrix
 
+def Pid(Kp=None, Ki=None, Kd=None, freq_lpf=None, units=None):
+    """Create a PID controller continuous-time transfer function.
+
+    Args:
+        Kp: Proportional gain.
+        Ki: Integral gain.
+        Kd: Derivative gain.
+        freq_lpf_Hz: Cutoff frequency of the low-pass filter on the derivative term (in Hz).
+
+    Returns:
+        A control.TransferFunction representing the PID controller.
+    """
+    # proportional term
+    if Kp is not None:
+        C_p = ct.zpk([], [], Kp)
+    else:
+        C_p = ct.zpk([], [], 0)
+
+    # integral term
+    if Ki is not None:
+        C_i = ct.zpk([], 0, Ki)
+    else:
+        C_i = ct.zpk([], [], 0)
+
+    # derivative term
+    if Kd is not None:
+        if freq_lpf is not None:  # check for low-pass filter frequency and units
+            if units is not None:
+                match units:
+                    case "Hz":
+                        freq_lpf_rad_per_s = freq_lpf
+                    case "rad/s":
+                        freq_lpf_rad_per_s = 2 * np.pi * freq_lpf
+                    case _:
+                        raise ValueError("'units' must either be 'Hz' or 'rad/s'")
+
+                C_d = ct.zpk([], [-freq_lpf_rad_per_s], Kd * freq_lpf_rad_per_s)
+            else:
+                raise ValueError("'units' of frequency must be specified")
+        else:
+            raise ValueError("A value for Kd was specified, but 'freq_lpf' was not")
+    else:
+        C_d = ct.zpk([], [], 0)
+
+    # connect transfer functions in parallel
+    C_pid = C_p + C_i + C_d
+    return C_pid
+
 
 class PID(eqx.Module):
     kp: float
@@ -40,17 +88,17 @@ class PID(eqx.Module):
         new_ctrl_state = integral, prev_error, control_input, spiraling
 
         return control_input, new_ctrl_state
-    
-class PID(eqx.Module):
+
+
+class PID2(eqx.Module):
     kp: float
     ki: float
     kd: float
     freq_lpf: float = None
-    max_output: float = None  # upper bound saturation
-    min_output: float = None  # lower bound saturation
-    rate_limit: float = None  # max rate of change of output
     # TODO: make actuator class instead of rate limit here
 
+
+    def __init__(self, kp, ki, kd, freq_lpf=None, max_output=None, min_output=None, rate_limit=None):
     def compute(self, ctrl_state, error, dt):
         integral, prev_error, prev_control_input, spiraling = ctrl_state
         integral += error * dt
