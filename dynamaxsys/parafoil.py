@@ -206,6 +206,87 @@ class JannParafoil4DOF2(Dynamics):
         # initialize super class Dynamics object
         super().__init__(dynamics_func, self.state_dim, self.control_dim)
 
+
+
+class JannParafoil3DOF(Dynamics):
+    """
+    3DOF model by Thomas Jann 
+    DOI: https://doi.org/10.2514/6.2001-2016
+
+    Assumes constant forward velocity and sink rate, yaw rate changes due to asymmetrid deflection with first order delay,
+    roll angle, pitch angle, sideslip, and side velocity are all assumed zero.
+    """
+    state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
+    control_dim: int = 2  # delta_a, delta_s
+    disturbance_dim: int = 3  # wind velocity in x, y, z
+
+    u_0: float  # constant forward velocity
+    w_0: float  # constant sink rate
+    K_psi: float  # psi model gain
+    T_psi: float  # psi model time constant
+
+    def __init__(self, params: dict):
+        self.u_0 = params["u_0"]
+        self.w_0 = params["w_0"]
+        self.K_psi = params["K_psi"]
+        self.T_psi = params["T_psi"]
+
+        def dynamics_func(state, control, disturbance=0, time=0):
+            x, y, z, u, v, w, phi, theta, psi, p, q, r = state
+            delta_a = control
+            wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances in Jann models
+
+
+            # Equations of motion
+            r_dot = (self.K_psi * delta_a - r) / self.T_psi  # Yaw rate EOM (r = psi_dot)
+            psi_dot = r
+
+            # no roll or pitch angle
+            phi_dot = 0.0
+            theta_dot = 0.0
+            phi = 0.0
+            theta = 0.0
+
+            # constant body velocities
+            u_dot = 0.0
+            v_dot = 0.0
+            w_dot = 0.0
+            u = self.u_0
+            v = 0.0
+            w = self.w_0
+
+
+            inertial_to_body = getInertialToBodyRotationMatrix(phi, theta, psi)
+            body_to_inertial = inertial_to_body.T  # rotation matrix is orthogonal
+
+            # inertial-frame velocity
+            xyz_dot = body_to_inertial @ jnp.array([u, v, w]) + disturbance
+
+            uvw_dot = jnp.array([u_dot, v_dot, w_dot])
+
+            pqr_to_euler_dot = jnp.array(
+                [
+                    [1, jnp.sin(phi) * jnp.tan(theta), jnp.cos(phi) * jnp.tan(theta)],
+                    [0, jnp.cos(phi), -jnp.sin(phi)],
+                    [0, jnp.sin(phi) / jnp.cos(theta), jnp.cos(phi) / jnp.cos(theta)],
+                ]
+            )
+            euler_to_pqr_dot = pqr_to_euler_dot.T
+
+            # euler angle dynamics (from body rates)
+            euler_dot = jnp.array([phi_dot, theta_dot, psi_dot])
+
+            # body frame rotational dynamics
+            pqr_dot = euler_to_pqr_dot @ euler_dot
+
+            return jnp.concatenate([xyz_dot, uvw_dot, euler_dot, pqr_dot])
+
+        # initialize super class Dynamics object
+        super().__init__(dynamics_func, self.state_dim, self.control_dim)
+
+
+
+
 class SlegersParafoil6DOF(Dynamics):
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
     control_dim: int = 1  # delta_a
