@@ -4,8 +4,8 @@ from dynamaxsys.base import Dynamics
 
 def getInertialToBodyRotationMatrix(phi, theta, psi):
     """
-    Computes the rotation matrix to transform vectors from the inertial frame to body frame
-    velocity given the roll (phi), pitch (theta), and yaw (psi) angles.
+    Computes the rotation matrix to transform linear velocity vectors from the inertial frame to body frame
+    given the roll (phi), pitch (theta), and yaw (psi) angles.
 
     Args:
         phi (float): Roll angle in radians.
@@ -41,6 +41,26 @@ def getInertialToBodyRotationMatrix(phi, theta, psi):
 
     return inertial_to_body
 
+def getBodyRatesFromEulerRates(phi, theta):
+    """
+    Computes the transformation matrix to convert Euler angle rates (phi_dot, theta_dot, psi_dot)
+    to body frame angular rates (p, q, r).
+
+    Args:
+        phi (float): Roll angle in radians.
+        theta (float): Pitch angle in radians.
+
+    Returns:
+        jnp.ndarray: A 3x3 transformation matrix.
+    """
+    pqr_from_euler_rates = jnp.array(
+        [
+            [1, 0, -jnp.sin(theta)],
+            [0, jnp.cos(phi),jnp.sin(phi)*jnp.cos(theta)],
+            [0, -jnp.sin(phi), jnp.cos(phi)*jnp.cos(theta)],
+        ]
+    )
+    return pqr_from_euler_rates
 
 class JannParafoil4DOF(Dynamics):
     state_dim: int = 4  # u, w, phi, psi
@@ -186,14 +206,14 @@ class JannParafoil4DOF2(Dynamics):
 
             uvw_dot = jnp.array([u_dot, v_dot, w_dot])
 
-            pqr_to_euler_dot = jnp.array(
+            pqr_to_euler_dot = jnp.array( 
                 [
                     [1, jnp.sin(phi) * jnp.tan(theta), jnp.cos(phi) * jnp.tan(theta)],
                     [0, jnp.cos(phi), -jnp.sin(phi)],
                     [0, jnp.sin(phi) / jnp.cos(theta), jnp.cos(phi) / jnp.cos(theta)],
                 ]
             )
-            euler_to_pqr_dot = pqr_to_euler_dot.T
+            euler_to_pqr_dot = pqr_to_euler_dot.T #TODO: FIX THIS SHI ITS WRONG
 
             # euler angle dynamics (from body rates)
             euler_dot = jnp.array([phi_dot, theta_dot, psi_dot])
@@ -236,14 +256,15 @@ class JannParafoil3DOF(Dynamics):
             delta_a = control
             wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances in Jann models
 
-
-            # Equations of motion
-            r_dot = (self.K_psi * delta_a - r) / self.T_psi  # Yaw rate EOM (r = psi_dot)
+            # Yaw rate EOM (r = psi_dot)
+            r_dot = (self.K_psi * delta_a - r) / self.T_psi  
             psi_dot = r
 
             # no roll or pitch angle
             phi_dot = 0.0
             theta_dot = 0.0
+            p_dot = 0.0
+            q_dot = 0.0
             phi = 0.0
             theta = 0.0
 
@@ -255,29 +276,20 @@ class JannParafoil3DOF(Dynamics):
             v = 0.0
             w = self.w_0
 
-
             inertial_to_body = getInertialToBodyRotationMatrix(phi, theta, psi)
             body_to_inertial = inertial_to_body.T  # rotation matrix is orthogonal
+            
+            # pqr_from_euler_dot = getBodyRatesFromEulerRates(phi, theta)
 
             # inertial-frame velocity
             xyz_dot = body_to_inertial @ jnp.array([u, v, w]) + disturbance
 
             uvw_dot = jnp.array([u_dot, v_dot, w_dot])
-
-            pqr_to_euler_dot = jnp.array(
-                [
-                    [1, jnp.sin(phi) * jnp.tan(theta), jnp.cos(phi) * jnp.tan(theta)],
-                    [0, jnp.cos(phi), -jnp.sin(phi)],
-                    [0, jnp.sin(phi) / jnp.cos(theta), jnp.cos(phi) / jnp.cos(theta)],
-                ]
-            )
-            euler_to_pqr_dot = pqr_to_euler_dot.T
-
-            # euler angle dynamics (from body rates)
             euler_dot = jnp.array([phi_dot, theta_dot, psi_dot])
+            pqr_dot = jnp.array([p_dot, q_dot, r_dot])  # only r_dot nonzero
 
-            # body frame rotational dynamics
-            pqr_dot = euler_to_pqr_dot @ euler_dot
+            # # body frame rotational dynamics
+            # pqr = pqr_from_euler_dot @ euler_dot
 
             return jnp.concatenate([xyz_dot, uvw_dot, euler_dot, pqr_dot])
 
