@@ -88,7 +88,7 @@ class JannParafoil4DOF(Dynamics):
         self.T_phi = params["T_phi"]
         self.g = params["g"]
 
-        def dynamics_func(state, control, disturbance=0, time=0):
+        def dynamics_func(state, control, disturbance=[0,0,0], time=0):
             u, w, phi, psi = state
             delta_a, delta_s = control
             # wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances
@@ -159,7 +159,7 @@ class JannParafoil4DOF2(Dynamics):
         self.T_phi = params["T_phi"]
         self.g = params["g"]
 
-        def dynamics_func(state, control, disturbance=0, time=0):
+        def dynamics_func(state, control, disturbance=[0,0,0], time=0):
             x, y, z, u, v, w, phi, theta, psi, p, q, r = state
             delta_a, delta_s = control
             wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances
@@ -235,9 +235,12 @@ class JannParafoil3DOF(Dynamics):
 
     Assumes constant forward velocity and sink rate, yaw rate changes due to asymmetrid deflection with first order delay,
     roll angle, pitch angle, sideslip, and side velocity are all assumed zero.
+    
+    The only states used in this dynamics model are psi (yaw angle) and r (yaw rate).
+    The other states are included for simulation and compatibility with 6DOF models.
     """
     state_dim: int = 12  # x, y, z, u, v, w, phi, theta, psi, p, q, r
-    control_dim: int = 2  # delta_a, delta_s
+    control_dim: int = 1  # delta_a
     disturbance_dim: int = 3  # wind velocity in x, y, z
 
     u_0: float  # constant forward velocity
@@ -251,7 +254,7 @@ class JannParafoil3DOF(Dynamics):
         self.K_psi = params["K_psi"]
         self.T_psi = params["T_psi"]
 
-        def dynamics_func(state, control, disturbance=0, time=0):
+        def dynamics_func(state, control, disturbance=[0,0,0], time=0):
             x, y, z, u, v, w, phi, theta, psi, p, q, r = state
             delta_a = control
             wind_x_velocity, wind_y_velocity, wind_z_velocity = disturbance #TODO implement disturbances in Jann models

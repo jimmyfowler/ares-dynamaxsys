@@ -48,3 +48,13 @@ jann_4dof_params = {
     "T_phi": 0.994,
     "g": 9.81,  # m/s^2
 }
+
+
+# Jann 3DOF parafoil model parameters
+# SI Units
+jann_3dof_params = {
+    "u_0": 9.89, # m/s
+    "w_0": 4.72, # m/s
+    "K_psi": 0.341, # rad/s
+    "T_psi": 0.43, # s
+}
