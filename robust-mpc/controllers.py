@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 from dynamaxsys.parafoil import getInertialToBodyRotationMatrix
+import control as ct
 
 def Pid(Kp=None, Ki=None, Kd=None, freq_lpf=None, units=None):
     """Create a PID controller continuous-time transfer function.
@@ -161,7 +162,7 @@ class TwelveStateHeadingController(PID):
         phi, theta, psi = x[6], x[7], x[8]  # roll, pitch, yaw angles
         inertial_to_body = getInertialToBodyRotationMatrix(phi, theta, psi)
         body_to_inertial = inertial_to_body.T  # rotation matrix is orthogonal
-        u, v, w = x[2], x[3], x[4]  # body-frame velocities
+        u, v, w = x[3], x[4], x[5]  # body-frame velocities (indices 3, 4, 5)
         xyz_dot = body_to_inertial @ jnp.array([u, v, w])
         x_inertial_velocity = xyz_dot[0]
         y_inertial_velocity = xyz_dot[1]
