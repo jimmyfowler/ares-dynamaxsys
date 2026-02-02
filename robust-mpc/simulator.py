@@ -122,6 +122,13 @@ def plot_jann_body(xs, ts):
 
 
 def plot_states(xs, state_labels, state_indices, us, ts):
+    # convert angles to degrees for plotting
+    for i in range(6, 12):
+        xs = xs.at[:, i].set(xs[:, i] * RAD_TO_DEG)
+
+    # change z-coord to altitude
+    xs = xs.at[:, 2].set(-xs[:, 2])
+    
     fig = sp.make_subplots(rows=len(state_labels) + 1, cols=1, shared_xaxes=True)
     for i, idx in enumerate(state_indices):
         fig.add_trace(
@@ -145,11 +152,21 @@ def plot_states(xs, state_labels, state_indices, us, ts):
     fig.show()
 
 
-def plot_3D_traj(xs, ts):
+def plot_3D_traj(xs, ts, show_arrows=False):
+    # Store original angles before converting to degrees
+    psi_rad = xs[:, 8]  # yaw angle in radians
+    
+    # convert angles to degrees for plotting
+    for i in range(6, 12):
+        xs = xs.at[:, i].set(xs[:, i] * RAD_TO_DEG)
+
+    # change z-coord to altitude
+    xs = xs.at[:, 2].set(-xs[:, 2])
+    
     # Get positions and forward speed
-    x = xs[:, 0]
-    y = xs[:, 1]
-    z = xs[:, 2]
+    x_ned = xs[:, 0]  # North
+    y_ned = xs[:, 1]  # East
+    z = xs[:, 2]  # Altitude
     fwd_speed = xs[:, 3]
     dwn_speed = xs[:, 5]
 
@@ -159,9 +176,10 @@ def plot_3D_traj(xs, ts):
     ]
 
     # main trajectory trace colored by downward speed
+    # Swap x and y to get proper map orientation: East (right) and North (away)
     traj_trace = go.Scatter3d(
-        x=x,
-        y=y,
+        x=y_ned,
+        y=x_ned,
         z=z,
         mode="lines+markers",
         line=dict(color=dwn_speed, colorscale="viridis", width=0.5),
@@ -177,7 +195,7 @@ def plot_3D_traj(xs, ts):
     )
 
     # large green starting marker
-    start_x, start_y, start_z = x[0], y[0], z[0]
+    start_x, start_y, start_z = y_ned[0], x_ned[0], z[0]  # swap to match axis swap
     start_trace = go.Scatter3d(
         x=[start_x],
         y=[start_y],
@@ -200,7 +218,54 @@ def plot_3D_traj(xs, ts):
         hovertext="Target Zone Center",
     )
 
-    fig = go.Figure(data=[traj_trace, start_trace, target_zone_trace])
+    arrow_traces = []
+    arrow_head_traces = []
+
+    if show_arrows:
+        # Add heading direction arrows at regular intervals
+        arrow_indices = jnp.arange(0, len(ts), max(1, len(ts) // 10))  # 10 arrows evenly spaced
+        arrow_length = 50  # arrow length in meters
+        
+        
+        for idx in arrow_indices:
+            idx = int(idx)
+            psi_angle = psi_rad[idx]
+            # In NED: positive psi is counterclockwise from North
+            # x-component points North: arrow_x = cos(psi) * arrow_length
+            # y-component points East: arrow_y = sin(psi) * arrow_length
+            # In NED: psi is angle from North
+            # After axis swap: x_plot = East (y_ned), y_plot = North (x_ned)
+            # So: arrow_x_end = East + sin(psi) * length, arrow_y_end = North + cos(psi) * length
+            arrow_x_end = y_ned[idx] + jnp.sin(psi_angle) * arrow_length
+            arrow_y_end = x_ned[idx] + jnp.cos(psi_angle) * arrow_length
+            
+            arrow_trace = go.Scatter3d(
+                x=[y_ned[idx], arrow_x_end],
+                y=[x_ned[idx], arrow_y_end],
+                z=[z[idx], z[idx]],  # keep arrow at same altitude
+                mode="lines",
+                line=dict(color="blue", width=4),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+            arrow_traces.append(arrow_trace)
+            
+            # Add arrow head (cone) at the end
+            arrow_head = go.Cone(
+                x=[arrow_x_end],
+                y=[arrow_y_end],
+                z=[z[idx]],
+                u=[jnp.sin(psi_angle) * 20],
+                v=[jnp.cos(psi_angle) * 20],
+                w=[0],
+                colorscale=[[0, "blue"], [1, "blue"]],
+                showscale=False,
+                hoverinfo="skip",
+                showlegend=False,
+            )
+            arrow_head_traces.append(arrow_head)
+    
+    fig = go.Figure(data=[traj_trace, start_trace, target_zone_trace] + arrow_traces + arrow_head_traces)
 
     # xr = max(x) - min(x)
     # yr = max(y) - min(y)
@@ -208,9 +273,9 @@ def plot_3D_traj(xs, ts):
 
     fig.update_layout(
         scene=dict(
-            xaxis_title="X Position (ft)",
-            yaxis_title="Y Position (ft)",
-            zaxis_title="Altitude (ft)",
+            xaxis_title="East Position (m)",
+            yaxis_title="North Position (m)",
+            zaxis_title="Altitude (m)",
             # xaxis=dict(nticks=4, range=[-500, 500], title="X Position (ft)"),
             # yaxis=dict(nticks=4, range=[-500, 500], title="Y Position (ft)"),
             # zaxis=dict(nticks=4, range=[0, 500], title="Altitude (ft)"),
